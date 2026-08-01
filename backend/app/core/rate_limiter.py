@@ -24,6 +24,11 @@ logger = logging.getLogger("trinetra.rate_limiter")
 
 RATE_LIMITS: dict[str, tuple[int, int]] = {
     # path_prefix: (max_requests, window_seconds)
+    # NOTE: order matters — more specific prefixes must come before shorter
+    # ones they overlap with, since the first startswith() match wins below.
+    "/api/auth/register/verify-otp": (15, 300),   # OTP-guessing brute force protection (5 min window)
+    "/api/auth/register/resend-otp": (5, 300),    # resend spam protection (also has its own per-email cooldown)
+    "/api/auth/register": (5, 300),               # signup-request spam protection (5 per 5 min per IP)
     "/api/search": (10, 60),
     "/ws/": (20, 60),
 }

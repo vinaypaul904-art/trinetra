@@ -41,6 +41,11 @@ async def lifespan(app: FastAPI):
     # Init users table for registration auth
     from app.core.api_key_auth import init_users_table
     init_users_table()
+
+    # Init OTP signup-verification table (email verification feature)
+    from app.core.email_otp import init_pending_signups_table, cleanup_expired_pending_signups
+    init_pending_signups_table()
+    cleanup_expired_pending_signups()
     
     # Start background watch scheduler
     start_scheduler()

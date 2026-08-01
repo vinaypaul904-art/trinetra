@@ -469,6 +469,37 @@ def login(username: str, password: str, ip_address: str | None = None) -> str | 
     return token
 
 
+def create_session_for_user(username: str) -> str | None:
+    """Issue a new session token for `username` WITHOUT checking a password.
+
+    Only safe to call immediately after the caller has independently
+    verified identity another way — specifically, right after
+    create_user_from_hash() succeeds following OTP email verification.
+    Never expose this to an endpoint that takes arbitrary user input.
+    """
+    user = get_user(username)
+    if not user:
+        return None
+
+    token = secrets.token_hex(32)
+    conn = _get_db()
+    if not conn:
+        return None
+    try:
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        conn.execute(
+            "INSERT INTO sessions (token, user_id, username, expires_at) VALUES (?, ?, ?, ?)",
+            (token, user["id"], username, expires_at),
+        )
+        conn.commit()
+        return token
+    except Exception as e:
+        logger.error("Failed to create session for verified user: %s", e)
+        return None
+    finally:
+        conn.close()
+
+
 def logout_token(token: str) -> bool:
     """Invalidate a session token. Returns True if it existed."""
     conn = _get_db()
@@ -852,5 +883,71 @@ def change_password(username: str, current_password: str, new_password: str) -> 
     except Exception as e:
         logger.error("Failed to change password: %s", e)
         return False, "Failed to change password. Please try again."
+    finally:
+        conn.close()
+
+
+# ── OTP signup support (additive — used by email_otp.py / routes.py) ──
+# These functions do not alter any existing behavior above; they exist so
+# the OTP-gated signup flow can validate/hash a password up front (while
+# it still has the plaintext) and only insert the `users` row after the
+# email has been verified, without double-hashing the password.
+
+
+def hash_password_for_storage(password: str) -> str:
+    """Public wrapper around the internal bcrypt hasher, for use by the
+    OTP signup flow (which must hash the password before the OTP is sent,
+    then store only the hash — never the plaintext — until verified).
+    """
+    return _hash_password(password)
+
+
+def check_password_reuse_any_user(password: str) -> bool:
+    """Public wrapper: True if `password` was recently used by any account.
+
+    Used by the OTP request step (which still has the plaintext password)
+    to preserve the existing password-reuse protection even though the
+    actual `users` row isn't created until after OTP verification.
+    """
+    return _is_password_used_by_any_user(password)
+
+
+def create_user_from_hash(username: str, email: str, password_hash: str) -> tuple[bool, str]:
+    """Create a new user from an already-computed bcrypt hash.
+
+    Identical to create_user() except it skips hashing (the OTP flow hashes
+    the password at request time, before the plaintext is discarded) and
+    skips the reuse check (already performed at request time via
+    check_password_reuse_any_user). Returns (success, message_or_role).
+
+    New users start with 0 credits — same as create_user() — they must
+    purchase a plan (via PaymentPage / Cashfree) before using the OSINT
+    tools, exactly like accounts created through the direct signup path.
+    """
+    conn = _get_db()
+    if not conn:
+        return False, "Service temporarily unavailable"
+
+    try:
+        cursor = conn.execute("SELECT COUNT(*) as count FROM users")
+        count = cursor.fetchone()["count"]
+        is_admin = 1 if count == 0 else 0
+
+        conn.execute(
+            "INSERT INTO users (username, email, password_hash, is_admin, credits) VALUES (?, ?, ?, ?, ?)",
+            (username, email, password_hash, is_admin, 0),
+        )
+        conn.commit()
+
+        user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        _add_password_to_history(user_id, password_hash)
+
+        role = "admin" if is_admin else "user"
+        return True, role
+    except Exception as e:
+        err = str(e)
+        if "UNIQUE" in err:
+            return False, "Username or email already exists"
+        return False, "Registration failed. Please try again."
     finally:
         conn.close()

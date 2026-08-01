@@ -23,8 +23,13 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   /** Attempt to log in with username and password */
   login: (username: string, password: string) => Promise<boolean>;
-  /** Register a new account and auto-login */
-  register: (username: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  /** Step 1 of signup: validate input and email a verification code.
+   *  Does NOT create the account or log the user in yet. */
+  register: (username: string, email: string, password: string) => Promise<{ success: boolean; error?: string; otpRequired?: boolean; email?: string }>;
+  /** Step 2 of signup: confirm the emailed code. Creates the account and logs in on success. */
+  verifyOtp: (email: string, otp: string) => Promise<{ success: boolean; error?: string }>;
+  /** Resend the signup verification code to the given email. */
+  resendOtp: (email: string) => Promise<{ success: boolean; error?: string; message?: string }>;
   /** Clear session token and log out */
   logout: () => void;
   /** Re-check auth status with the backend */
@@ -48,7 +53,7 @@ const initialState: AuthState & { registrationOpen: boolean } = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/** Fetch credits and paymentConfigured from the backend after login/register */
+/** Fetch credits and paymentConfigured from the backend after login/verify-otp */
 async function fetchPaymentState(token: string): Promise<{ credits: number; paymentConfigured: boolean }> {
   let credits = 0;
   let paymentConfigured = false;
@@ -173,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (username: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const register = useCallback(async (username: string, email: string, password: string): Promise<{ success: boolean; error?: string; otpRequired?: boolean; email?: string }> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
       const res = await fetch(`${API_BASE}/auth/register`, {
@@ -183,36 +188,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json();
 
+      // Account is NOT created yet — this only sends the verification code.
+      // Auth state (isAuthenticated/token) stays untouched here.
+      setState(prev => ({ ...prev, isLoading: false }));
+
+      if (data.success && data.otp_required) {
+        return { success: true, otpRequired: true, email: data.email || email };
+      }
+
+      return { success: false, error: data.error || 'Registration failed.' };
+    } catch {
+      setState(prev => ({ ...prev, isLoading: false }));
+      return { success: false, error: 'Network error. Could not connect to server.' };
+    }
+  }, []);
+
+  const verifyOtp = useCallback(async (email: string, otp: string): Promise<{ success: boolean; error?: string }> => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const res = await fetch(`${API_BASE}/auth/register/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp }),
+      });
+      const data = await res.json();
+
       if (data.success && data.token) {
         setApiKey(data.token);
         try {
-          localStorage.setItem('trinetra_username', data.username || username);
+          localStorage.setItem('trinetra_username', data.username || '');
         } catch {}
-        // Fetch credits and paymentConfigured after successful registration
+        // Fetch credits and paymentConfigured now that the account exists (mirrors login())
         const { credits, paymentConfigured } = await fetchPaymentState(data.token);
         setState(prev => ({
           isAuthenticated: true,
           authEnabled: true,
           isLoading: false,
           error: null,
-          username: data.username || username,
+          username: data.username || null,
           registrationOpen: prev.registrationOpen,
           credits,
           paymentConfigured,
         }));
         return { success: true };
       } else {
-        setState(prev => ({
-          ...prev,
-          isLoading: false,
-        }));
-        return { success: false, error: data.error || 'Registration failed.' };
+        setState(prev => ({ ...prev, isLoading: false }));
+        return { success: false, error: data.error || 'Verification failed.' };
       }
     } catch {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-      }));
+      setState(prev => ({ ...prev, isLoading: false }));
+      return { success: false, error: 'Network error. Could not connect to server.' };
+    }
+  }, []);
+
+  const resendOtp = useCallback(async (email: string): Promise<{ success: boolean; error?: string; message?: string }> => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/register/resend-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        return { success: true, message: data.message };
+      }
+      return { success: false, error: data.error || 'Could not resend code.' };
+    } catch {
       return { success: false, error: 'Network error. Could not connect to server.' };
     }
   }, []);
@@ -310,7 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.isAuthenticated, state.username, refreshCredits]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, checkAuth, refreshCredits, registrationOpen: state.registrationOpen }}>
+    <AuthContext.Provider value={{ ...state, login, register, verifyOtp, resendOtp, logout, checkAuth, refreshCredits, registrationOpen: state.registrationOpen }}>
       {children}
     </AuthContext.Provider>
   );

@@ -6,7 +6,7 @@ import { CityData, RiskLevel, CrimeDataPoint } from '../../types';
 import { useThreatContext } from '../../store/ThreatContext';
 import indiaStatesGeoJSON from '../../utils/indiaStatesGeoJSON';
 
-import { BoltIcon, FlameIcon, GraphIcon, HomeIcon, SearchIcon } from '../Icons/Icons';
+import { BoltIcon, FlameIcon, GraphIcon, HomeIcon, SearchIcon, ShieldIcon, CloseIcon } from '../Icons/Icons';
 import { VectorDetailModal, VectorLike } from '../VectorDetailModal/VectorDetailModal';
 import DataSourcesPanel from '../DataSourcesPanel/DataSourcesPanel';
 
@@ -708,7 +708,8 @@ function AttackVectorTable({ vectors, onSelect }: { vectors: VectorLike[]; onSel
 // ==================== Attack Info Panel (Enhanced — Rich Origin Intelligence) ====================
 
 function AttackInfoPanel({ vectors, visible, onSelectVector }: { vectors: VectorLike[]; visible: boolean; onSelectVector?: (v: VectorLike) => void }) {
-  const [isOpen, setIsOpen] = useState(true); // Open by default
+  const [panelOpen, setPanelOpen] = useState(false); // collapsed to a floating button by default, like the AI chat assistant
+  const [isOpen, setIsOpen] = useState(true); // internal accordion for the body sections, once the panel itself is open
   if (!visible || vectors.length === 0) return null;
 
   const criticalCount = vectors.filter(v => v.severity === 'critical').length;
@@ -716,6 +717,19 @@ function AttackInfoPanel({ vectors, visible, onSelectVector }: { vectors: Vector
   const safeCount = vectors.filter(v => v.severity === 'safe').length;
   const uniqueOrigins = new Set(vectors.map(v => v.from)).size;
   const uniqueTypes = new Set(vectors.map(v => v.attackType)).size;
+
+  if (!panelOpen) {
+    return (
+      <button
+        className="map-attack-info-fab"
+        onClick={() => setPanelOpen(true)}
+        title={`Threat Intelligence — ${vectors.length} active vectors`}
+      >
+        <ShieldIcon size={20} color="var(--accent-red)" />
+        {criticalCount > 0 && <span className="map-attack-info-fab-badge">{criticalCount}</span>}
+      </button>
+    );
+  }
 
   return (
     <div className="map-attack-info-panel">
@@ -734,6 +748,13 @@ function AttackInfoPanel({ vectors, visible, onSelectVector }: { vectors: Vector
             {safeCount > 0 && <span className="sev-strip-item safe">{safeCount}</span>}
           </div>
           <span className={`maih-chevron ${isOpen ? 'open' : ''}`}>▼</span>
+          <button
+            className="maih-close-btn"
+            onClick={(e) => { e.stopPropagation(); setPanelOpen(false); }}
+            title="Minimize Threat Intelligence"
+          >
+            <CloseIcon size={13} />
+          </button>
         </div>
       </div>
 

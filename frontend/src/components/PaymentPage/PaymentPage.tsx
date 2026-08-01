@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../store/AuthContext';
 import { getStoredApiKey } from '../../utils/api';
 import { ShieldIcon, ChevronRightIcon, CheckIcon, CreditCardIcon, LogOutIcon } from '../Icons/Icons';
-import './PaymentPage.css';
+import "./PaymentPage.css";
 
 interface Plan {
   id: string;

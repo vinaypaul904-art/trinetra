@@ -43,6 +43,38 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""  # set via GEMINI_API_KEY env var
     gemini_model: str = "gemini-flash-latest"
 
+    # ==================== Email Verification (SMTP) ====================
+    # Generic SMTP settings — works with Gmail, SendGrid, Mailgun, Amazon SES,
+    # Zoho Mail, Outlook/Office365, or any standard SMTP provider.
+    #
+    # Leave SMTP_HOST empty to run in "dev mode": OTPs are logged to the
+    # backend console instead of emailed, so local development still works
+    # without real credentials.
+    smtp_host: str = ""            # e.g. smtp.gmail.com / smtp.sendgrid.net
+    smtp_port: int = 587           # 587 = STARTTLS (most common), 465 = implicit SSL
+    smtp_username: str = ""        # SMTP auth username (often your full email)
+    smtp_password: str = ""        # SMTP auth password / app password / API key
+    smtp_use_tls: bool = True      # STARTTLS — use with port 587
+    smtp_use_ssl: bool = False     # Implicit SSL — use with port 465 (mutually exclusive with TLS)
+    smtp_from_email: str = ""      # "From" address shown to recipients (defaults to smtp_username if empty)
+    smtp_from_name: str = "TRINETRA"  # "From" display name
+
+    # OTP behavior
+    otp_length: int = 6                     # number of digits in the OTP code
+    otp_expiry_minutes: int = 10            # how long an OTP stays valid
+    otp_max_attempts: int = 5               # wrong-code attempts before the OTP is invalidated
+    otp_resend_cooldown_seconds: int = 60   # minimum wait between resend requests
+    otp_max_requests_per_hour: int = 5      # max OTP sends per email address per hour (anti-spam)
+
+    # Fake/disposable email protection
+    block_disposable_emails: bool = True   # reject known throwaway-email domains (mailinator, etc.)
+    verify_email_mx: bool = True           # reject domains with no mail server (DNS MX lookup)
+
+    @property
+    def smtp_configured(self) -> bool:
+        """True if enough SMTP settings are present to actually send email."""
+        return bool(self.smtp_host and self.smtp_username and self.smtp_password)
+
     # Cashfree Payment Gateway
     cashfree_app_id: str = ""       # set via CASHFREE_APP_ID env var
     cashfree_secret_key: str = ""   # set via CASHFREE_SECRET_KEY env var

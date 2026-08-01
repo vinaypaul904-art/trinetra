@@ -7,7 +7,17 @@ from app.models.schemas import SearchRequest, SearchResponse, PluginResultData
 from app.services.orchestrator import OrchestratorService
 from app.core.detector import AutoDetect
 from app.core.sanitizer import sanitize_target, validate_target, InputValidationError
-from app.core.api_key_auth import require_api_key, login, logout_token, is_auth_enabled, validate_token, create_user, validate_password_strength, change_password, get_username_for_token, get_user_credits, deduct_credits, add_credits
+from app.core.api_key_auth import (
+    require_api_key, login, logout_token, is_auth_enabled, validate_token,
+    create_user, validate_password_strength, change_password, get_username_for_token,
+    hash_password_for_storage, check_password_reuse_any_user, create_user_from_hash,
+    create_session_for_user, get_user_credits, deduct_credits, add_credits,
+)
+from app.core.email_otp import (
+    validate_email_for_signup, is_email_or_username_taken, create_or_refresh_otp,
+    verify_and_consume_otp, get_pending_signup_identity, cleanup_expired_pending_signups,
+)
+from app.core.email_service import send_otp_email
 from app.core.config import settings
 import re
 
@@ -36,46 +46,149 @@ async def auth_status():
 
 @router.post("/auth/register")
 async def auth_register(body: dict):
-    """Register a new user account.
+    """Start registration by validating input and emailing a verification code.
 
     Accepts: {"username": "...", "email": "...", "password": "..."}
-    Returns a session token on success, or an error on failure.
-    The first registered user becomes admin.
+    Returns {"success": true, "otp_required": true, "email": "..."} on success —
+    the account is NOT created yet. It's only created after the code is
+    confirmed via POST /api/auth/register/verify-otp.
     This endpoint is intentionally unauthenticated.
     """
-    username = body.get("username", "")
-    email = body.get("email", "")
+    username = body.get("username", "").strip()
+    email = body.get("email", "").strip().lower()
     password = body.get("password", "")
 
-    # Validate input
+    # Validate input (unchanged from before)
     if not username or len(username) < 3:
         return {"success": False, "error": "Username must be at least 3 characters.", "auth_enabled": True}
-    if not email or "@" not in email:
-        return {"success": False, "error": "Valid email address is required.", "auth_enabled": True}
-    # Validate password strength
+    if not re.match(r'^[a-zA-Z0-9_-]+$', username):
+        return {"success": False, "error": "Username can only contain letters, numbers, underscores, and hyphens.", "auth_enabled": True}
     password_valid, password_error = validate_password_strength(password)
     if not password_valid:
         return {"success": False, "error": password_error, "auth_enabled": True}
-    if not re.match(r'^[a-zA-Z0-9_-]+$', username):
-        return {"success": False, "error": "Username can only contain letters, numbers, underscores, and hyphens.", "auth_enabled": True}
 
-    success, result = create_user(username, email, password)
-    if success:
-        # Auto-login after registration
-        token = login(username, password)
-        role = result  # "admin" or "user"
+    # Email quality checks — format, disposable-domain blocklist, MX record lookup
+    email_valid, email_error = await validate_email_for_signup(email)
+    if not email_valid:
+        return {"success": False, "error": email_error, "auth_enabled": True}
+
+    # Reject if this username/email is already a real account
+    if is_email_or_username_taken(email, username):
+        return {"success": False, "error": "Username or email already exists", "auth_enabled": True}
+
+    # Password-reuse check (moved here from create_user — still has the
+    # plaintext password at this point, which is discarded right after)
+    if check_password_reuse_any_user(password):
         return {
-            "success": True,
-            "token": token,
-            "username": username,
-            "role": role,
+            "success": False,
+            "error": "This password was recently used. Please choose a different password.",
             "auth_enabled": True,
-            "message": f"Account created! You are logged in as {role}.",
+        }
+
+    # Hash the password now — only the hash is ever stored while pending
+    password_hash = hash_password_for_storage(password)
+
+    ok, message, otp_code = create_or_refresh_otp(username, email, password_hash)
+    if not ok:
+        return {"success": False, "error": message, "auth_enabled": True}
+
+    sent, send_message = await send_otp_email(email, username, otp_code)
+    if not sent:
+        logger.error("Failed to send OTP email to %s: %s", email, send_message)
+        return {
+            "success": False,
+            "error": "Could not send verification email. Please try again in a moment.",
+            "auth_enabled": True,
         }
 
     return {
-        "success": False,
-        "error": result,
+        "success": True,
+        "otp_required": True,
+        "email": email,
+        "message": f"We sent a verification code to {email}. Enter it to finish creating your account.",
+        "auth_enabled": True,
+    }
+
+
+@router.post("/auth/register/verify-otp")
+async def auth_register_verify_otp(body: dict):
+    """Confirm the emailed OTP and create the account.
+
+    Accepts: {"email": "...", "otp": "..."}
+    Returns a session token on success, just like the old one-step register did.
+    This endpoint is intentionally unauthenticated.
+    """
+    email = body.get("email", "").strip().lower()
+    otp = str(body.get("otp", "")).strip()
+
+    if not email or not otp:
+        return {"success": False, "error": "Email and code are required.", "auth_enabled": True}
+
+    verified, message, pending = verify_and_consume_otp(email, otp)
+    if not verified:
+        return {"success": False, "error": message, "auth_enabled": True}
+
+    username = pending["username"]
+    password_hash = pending["password_hash"]
+
+    created, result = create_user_from_hash(username, email, password_hash)
+    if not created:
+        # Most likely a race: someone else took the username/email while this
+        # OTP was pending. The email is verified, but the account can't be made.
+        return {"success": False, "error": result, "auth_enabled": True}
+
+    role = result  # "admin" or "user"
+    token = create_session_for_user(username)
+
+    return {
+        "success": True,
+        "token": token,
+        "username": username,
+        "role": role,
+        "auth_enabled": True,
+        "message": f"Email verified! Account created — you are logged in as {role}.",
+    }
+
+
+@router.post("/auth/register/resend-otp")
+async def auth_register_resend_otp(body: dict):
+    """Resend a verification code for an in-progress signup.
+
+    Accepts: {"email": "..."}
+    Subject to the same resend cooldown / hourly limit as the initial send.
+    This endpoint is intentionally unauthenticated.
+    """
+    email = body.get("email", "").strip().lower()
+    if not email:
+        return {"success": False, "error": "Email is required.", "auth_enabled": True}
+
+    identity = get_pending_signup_identity(email)
+    if not identity:
+        return {
+            "success": False,
+            "error": "No pending verification found for this email. Please sign up again.",
+            "auth_enabled": True,
+        }
+    username, password_hash = identity
+
+    ok, message, otp_code = create_or_refresh_otp(username, email, password_hash)
+    if not ok:
+        return {"success": False, "error": message, "auth_enabled": True}
+
+    sent, send_message = await send_otp_email(email, username, otp_code)
+    if not sent:
+        logger.error("Failed to resend OTP email to %s: %s", email, send_message)
+        return {
+            "success": False,
+            "error": "Could not send verification email. Please try again in a moment.",
+            "auth_enabled": True,
+        }
+
+    return {
+        "success": True,
+        "otp_required": True,
+        "email": email,
+        "message": f"We sent a new verification code to {email}.",
         "auth_enabled": True,
     }
 
