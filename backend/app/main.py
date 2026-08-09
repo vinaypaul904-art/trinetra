@@ -46,6 +46,10 @@ async def lifespan(app: FastAPI):
     from app.core.email_otp import init_pending_signups_table, cleanup_expired_pending_signups
     init_pending_signups_table()
     cleanup_expired_pending_signups()
+
+    from app.core.password_reset import init_password_resets_table, cleanup_expired_reset_tokens
+    init_password_resets_table()
+    cleanup_expired_reset_tokens()
     
     # Start background watch scheduler
     start_scheduler()

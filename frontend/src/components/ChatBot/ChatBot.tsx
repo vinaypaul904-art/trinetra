@@ -17,13 +17,13 @@ function buildContext(state: AppState): string {
   const lines = state.results.slice(0, 25).map((r: ToolResult) => {
     let gui = '';
     try {
-      gui = r.guiData ? JSON.stringify(r.guiData).slice(0, 350) : '';
+      gui = r.guiData ? JSON.stringify(r.guiData).slice(0, 3000) : '';   // was 350
     } catch {
       gui = '';
     }
     return `- [${r.category}] ${r.pluginName} — status: ${r.status}, freshness: ${r.freshness}${gui ? ` — data: ${gui}` : ''}`;
   });
-  return `Target: ${target}\nTotal findings: ${state.results.length}\n\nScan results:\n${lines.join('\n')}`.slice(0, 8000);
+  return `Target: ${target}\nTotal findings: ${state.results.length}\n\nScan results:\n${lines.join('\n')}`.slice(0, 24000); // was 8000
 }
 
 /** Minimal markdown-ish renderer: **bold**, "- " bullets, and paragraphs. No new deps. */

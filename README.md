@@ -49,6 +49,7 @@
 ## 📋 Table of Contents
 
 - [🚀 Quick Start (Docker)](#-quick-start-docker)
+- [🔑 Environment Setup — API Keys & Credentials](#-environment-setup--api-keys--credentials)
 - [🛠️ Manual Installation (No Docker)](#️-manual-installation-no-docker)
 - [🎯 What TRINETRA Does](#-what-trinetra-does)
 - [🏗️ Architecture & Workflow](#️-architecture--workflow)
@@ -83,7 +84,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/K921-cyber/INDRA.git
+git clone https://github.com/your-username/INDRA.git
 cd INDRA
 
 # Copy and customize environment variables
@@ -135,15 +136,121 @@ docker compose -p indra2 down -v
 
 ---
 
+<br/>
+
+---
+
+## 🔑 Environment Setup — API Keys & Credentials
+
+Everything below lives in **one file: `.env`** at the project root. You only create it once, and both Docker and manual (VS Code) mode read from it.
+
+### Step 1 — Create your `.env` file
+
+```bash
+cp .env.example .env
+```
+
+Open the new `.env` file in VS Code. It's fully commented — every variable explains itself — but here's the plain-language version of what to fill in.
+
+### Step 2 — The one thing you MUST set
+
+```env
+POSTGRES_PASSWORD=CHANGE_ME_TO_A_STRONG_PASSWORD
+```
+
+This is the only required value. **Everything else below is optional** — the app runs and every core feature (search, watches, threat feed, map) works with zero additional keys. The 4 credential groups below just switch on extra functionality.
+
+### Step 3 — Optional credentials (fill in only what you want to enable)
+
+| # | Credential | Unlocks | Where to Get It |
+|---|---|---|---|
+| 1 | `GEMINI_API_KEY` | The AI Chatbot + AI-generated `.docx` reports | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) — free |
+| 2 | `TELEGRAM_BOT_TOKEN` | The Telegram OSINT bot | Message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` |
+| 3 | `CASHFREE_APP_ID` + `CASHFREE_SECRET_KEY` | Credit purchases / billing (leave empty = every search is free & unlimited) | [cashfree.com/developers](https://cashfree.com/developers) — sign up, use **sandbox** keys for testing |
+| 4 | `SMTP_HOST` + `SMTP_USERNAME` + `SMTP_PASSWORD` | Actually emailing signup verification codes (leave empty = OTP codes print to the backend console/terminal instead — fully usable for local testing) | See Gmail example below, or any SMTP provider |
+
+**If you leave all 4 groups empty:** the app still runs completely — AI chat shows a "not configured" message, Telegram bot doesn't start, every search is free (no credit gate), and OTP codes appear directly in your terminal log instead of an inbox. This is the fastest way to get the app running to check it works, before wiring up real credentials.
+
+#### 1. Gemini (AI Chatbot)
+
+```env
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-flash-latest
+```
+
+#### 2. Telegram Bot (optional OSINT bot)
+
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_OSINT_API_URL=
+TELEGRAM_OSINT_API_KEY=
+```
+
+#### 3. Cashfree (Payments / Credits)
+
+```env
+CASHFREE_APP_ID=your_app_id
+CASHFREE_SECRET_KEY=your_secret_key
+CASHFREE_ENV=sandbox
+CASHFREE_WEBHOOK_URL=http://localhost:8000/api/payment/webhook
+```
+
+Use **sandbox** credentials and `CASHFREE_ENV=sandbox` for testing — sandbox test card: `4111 1111 1111 1111`, any future expiry, CVV `123`.
+
+#### 4. SMTP (Email delivery for signup verification codes)
+
+Works with Gmail, SendGrid, Mailgun, Amazon SES, Zoho, Outlook — any standard SMTP provider. Gmail example:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=youraddress@gmail.com
+SMTP_PASSWORD=your_16_char_app_password
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
+SMTP_FROM_EMAIL=youraddress@gmail.com
+SMTP_FROM_NAME=TRINETRA
+```
+
+> Gmail requires an **App Password**, not your normal login password. Enable 2-Step Verification on the Google account, then generate one at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+
+Until this is filled in, registering an account still works end-to-end — the verification code is printed in the backend's console output (`docker compose -p indra2 logs -f backend`, or directly in the VS Code terminal in manual mode) instead of being emailed.
+
+### Step 4 — Run the project (pick one)
+
+**Option A — Docker (recommended, one command):**
+```bash
+docker compose -p indra2 up -d --build
+```
+See [🚀 Quick Start (Docker)](#-quick-start-docker) above for the full walkthrough.
+
+**Option B — Manual, inside VS Code:** see [🛠️ Manual Installation](#️-manual-installation-no-docker) directly below — it walks through opening two integrated terminals (one for backend, one for frontend) with the exact commands to paste.
+
+<br/>
+
+---
+
 ## 🛠️ Manual Installation (No Docker)
+
+Use this if you don't have Docker, or want to run everything directly inside VS Code for development.
 
 ### Prerequisites
 
 - Python 3.11+
 - Node.js 18+
 - SQLite (included with Python) or PostgreSQL 15 (optional)
+- Make sure you've already created `.env` — see [🔑 Environment Setup](#-environment-setup--api-keys--credentials) above
 
-### Backend Setup
+### Open the project in VS Code
+
+```bash
+cd INDRA
+code .
+```
+
+You'll run the backend and frontend as **two separate processes**, so open **two integrated terminals** side by side: `` Ctrl+` `` (backslash key, below Esc) to open one terminal, then click the **split terminal** icon (or `` Ctrl+Shift+5 ``) to open a second one next to it.
+
+### Terminal 1 — Backend
 
 ```bash
 cd backend
@@ -162,9 +269,9 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The database (`trinetra.db`) and users table are created automatically on first startup. The first user to register becomes an admin.
+Leave this terminal running — it's your live backend log (this is also where OTP verification codes will print if `SMTP_HOST` isn't set). The database (`trinetra.db`) and the auth tables are created automatically on first startup. The first user to register becomes an admin.
 
-### Frontend Setup
+### Terminal 2 — Frontend
 
 ```bash
 cd frontend
@@ -172,17 +279,17 @@ npm install
 npx vite --host 0.0.0.0 --port 3000
 ```
 
-### TaskIQ Worker (Optional)
+Leave this running too. Then open **http://localhost:3000** in your browser — register a new account and start searching.
 
-By default in manual mode `REDIS_URL` is empty, so watch re-checks run **inline** inside the backend process automatically — you don't need the worker for Watch Monitoring to work. Only run a separate worker if you've deliberately set `REDIS_URL` in `.env`:
+### Terminal 3 (Optional) — TaskIQ Worker
+
+By default in manual mode `REDIS_URL` is empty, so watch re-checks run **inline** inside the backend process automatically — you don't need this third terminal for Watch Monitoring to work. Only run it if you've deliberately set `REDIS_URL` in `.env`:
 
 ```bash
 cd backend
 source venv/bin/activate
 taskiq worker app.tasks.broker:broker app.tasks.watch_tasks
 ```
-
-Then open **http://localhost:3000** — register a new account and start searching.
 
 > **Note on ports:** The backend always runs on port **8000** — the Vite dev server proxies `/api` and `/ws` to `localhost:8000`, so manual mode must use **8000** too. All API examples in this README use port **8000**.
 
@@ -501,27 +608,43 @@ Attack vectors are rendered as an **SVG overlay** using Leaflet's `L.svgOverlay`
 
 ## 🔐 Authentication & User System
 
-TRINETRA uses a **username/password registration system** with session tokens backed by SQLite.
+TRINETRA uses a **username/password registration system** with mandatory email verification and session tokens backed by a dedicated SQLite database.
+
+### Registration Flow (Email OTP Verification)
+
+Accounts are **not** created immediately on registration — the flow is 3 steps:
+
+1. **`POST /api/auth/register`** — user submits username, email, password. The backend validates the email (format + disposable-domain blocklist + a live DNS MX-record check to reject fake/non-existent domains), hashes the password, and emails a 6-digit OTP code. **No account exists yet at this point.**
+2. **`POST /api/auth/register/verify-otp`** — user submits the code. On success, the real account is created and a session token is returned (auto-login) — the first account ever created on an installation becomes admin.
+3. **`POST /api/auth/register/resend-otp`** — if the code expires or doesn't arrive, request a new one (rate-limited, see below).
+
+If SMTP isn't configured in `.env`, the OTP is printed to the backend console/terminal instead of emailed, so registration still works end-to-end for local development.
 
 ### Security Features
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| **Password Hashing** | ✅ bcrypt | GPU-resistant, 12 rounds |
+| **Password Hashing** | ✅ bcrypt | GPU-resistant |
+| **Email Verification** | ✅ Mandatory OTP | 6-digit code, 10-minute expiry, 5 wrong-attempt limit |
+| **Disposable Email Blocking** | ✅ Enabled | Blocklist of known throwaway-email domains (mailinator, guerrillamail, etc.) |
+| **Email Deliverability Check** | ✅ DNS MX lookup | Rejects domains that structurally cannot receive mail |
+| **OTP Spam Protection** | ✅ Rate-limited | 60s resend cooldown + max 5 sends per email per hour |
 | **Session Storage** | ✅ Database-backed | Survives server restarts |
 | **Account Lockout** | ✅ 5 failed attempts | 15-minute lockout window |
 | **Password Strength** | ✅ Enforced | 8+ chars, uppercase, lowercase, digit, special char |
-| **Password History** | ✅ Last 5 passwords | Prevents reuse of recent passwords |
-| **Generic Error Messages** | ✅ Enabled | Prevents username enumeration |
-| **Rate Limiting** | ✅ Per-IP sliding window | 10/min search, 60/min general |
+| **Password History** | ✅ Last 5 passwords | Prevents reuse of recent passwords, checked both per-account and platform-wide |
+| **Generic Error Messages** | ✅ Enabled | Prevents username/email enumeration |
+| **Rate Limiting** | ✅ Per-IP sliding window | 10/min search, tighter limits specifically on register/OTP endpoints (see below), 60/min general |
 | **Input Validation** | ✅ Strict regex | Rejects control chars, shell metacharacters |
 
 ### API Endpoints
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/auth/status` | Check if auth is enabled and registration is open | ❌ Public |
-| `POST` | `/api/auth/register` | Create a new account `{username, email, password}` | ❌ Public |
+| `GET` | `/api/auth/status` | Check if auth is enabled, registration is open, and payments are configured | ❌ Public |
+| `POST` | `/api/auth/register` | Start registration — validates input, emails a 6-digit OTP `{username, email, password}` | ❌ Public |
+| `POST` | `/api/auth/register/verify-otp` | Confirm the OTP and create the account (auto-login) `{email, otp}` | ❌ Public |
+| `POST` | `/api/auth/register/resend-otp` | Resend a verification code `{email}` | ❌ Public |
 | `POST` | `/api/auth/login` | Log in with credentials `{username, password}` | ❌ Public |
 | `POST` | `/api/auth/verify` | Check if a session token is still valid `{token}` | ❌ Public |
 | `POST` | `/api/auth/logout` | Invalidate the current session token | ✅ Required |
@@ -764,8 +887,10 @@ All data in TRINETRA is **real** — no simulated or placeholder data. See the t
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/auth/status` | Check auth status + registration open | ❌ Public |
-| `POST` | `/api/auth/register` | Register new user `{username, email, password}` | ❌ Public |
+| `GET` | `/api/auth/status` | Check auth status, registration open, payments configured | ❌ Public |
+| `POST` | `/api/auth/register` | Start registration — emails a 6-digit OTP `{username, email, password}` | ❌ Public |
+| `POST` | `/api/auth/register/verify-otp` | Confirm OTP → creates account + session token `{email, otp}` | ❌ Public |
+| `POST` | `/api/auth/register/resend-otp` | Resend the verification code `{email}` | ❌ Public |
 | `POST` | `/api/auth/login` | Log in `{username, password}` → session token | ❌ Public |
 | `POST` | `/api/auth/verify` | Verify session token `{token}` | ❌ Public |
 | `POST` | `/api/auth/logout` | Invalidate session token | ✅ Required |
@@ -852,14 +977,22 @@ Client → Server:  {"action": "pause"} | {"action": "resume"} | {"action": "sto
 
 > **Note:** All examples use port **8000** — both Docker and manual mode (the Vite dev proxy targets `localhost:8000`).
 
-**Register a user:**
+**Register a user (starts OTP verification):**
 ```bash
 curl -X POST http://localhost:8000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "email": "admin@example.com", "password": "SecurePass123!"}'
 ```
 
-**Login:**
+**Verify the OTP (creates the account + logs in):**
+```bash
+curl -X POST http://localhost:8000/api/auth/register/verify-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@example.com", "otp": "123456"}'
+```
+*(Check the backend terminal/logs for the code if `SMTP_HOST` isn't configured — it prints there instead of being emailed.)*
+
+**Login (after the account is verified):**
 ```bash
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
@@ -911,7 +1044,9 @@ trinetra/
 │   │   │   ├── detector.py             # Auto-detect target type (domain/IP/email/phone/name)
 │   │   │   ├── sanitizer.py            # Input validation & sanitization
 │   │   │   ├── rate_limiter.py         # In-memory sliding window rate limiter
-│   │   │   └── api_key_auth.py         # User auth (register, login, tokens, dedicated SQLite DB)
+│   │   │   ├── email_otp.py            # Signup OTP: pending-signup storage, disposable/MX email checks
+│   │   │   └── api_key_auth.py         # User auth (register, login, tokens, credits, dedicated SQLite DB)
+│   │   ├── templates/                  # Jinja2 HTML email templates (otp, welcome, account_verified, forgot_password)
 │   │   ├── data/
 │   │   │   └── ncrb_crime_data.py      # NCRB 2022 cyber crime statistics (23 states)
 │   │   ├── models/
@@ -945,6 +1080,7 @@ trinetra/
 │   │   │   ├── watch_service.py        # Watch CRUD + alert service
 │   │   │   ├── chat_service.py         # Gemini AI chatbot service
 │   │   │   ├── docx_report_service.py  # Markdown → Word (.docx) report generator
+│   │   │   ├── email_service.py        # SMTP transport + Jinja2 template rendering (OTP emails)
 │   │   │   ├── payment_service.py      # Cashfree orders, verification, webhooks, flat pricing
 │   │   │   ├── database.py             # Async SQLAlchemy (SQLite/PostgreSQL, dual SQL sets)
 │   │   │   └── telegram_bot.py         # Telegram OSINT bot (optional)
@@ -1031,6 +1167,7 @@ trinetra/
 | `DATABASE_URL` | `sqlite+aiosqlite:///./trinetra.db` | Database connection string |
 | `AUTH_DB_PATH` | `trinetra_auth.db` | Path to dedicated SQLite auth database (auto-created) |
 | `CORS_ORIGINS` | `["http://localhost:3000","http://localhost:5173"]` | Allowed CORS origins |
+| `FRONTEND_URL` | `http://localhost:3000` | Base URL used to build links inside emails (e.g. password reset) |
 | `PLUGIN_TIMEOUT` | `30` | Per-plugin timeout in seconds |
 | `HIBP_API_KEY` | `""` | Have I Been Pwned API key |
 | `TELEGRAM_BOT_TOKEN` | `""` | Telegram Bot token |
@@ -1038,12 +1175,27 @@ trinetra/
 | `TELEGRAM_OSINT_API_KEY` | `""` | API key for OSINT API |
 | `GEMINI_API_KEY` | `""` | Google Gemini API key (enables AI chatbot & report generation) |
 | `GEMINI_MODEL` | `gemini-flash-latest` | Gemini model used for chatbot replies |
+| `SMTP_HOST` | `""` | SMTP server hostname (empty = OTP codes print to console instead of emailing) |
+| `SMTP_PORT` | `587` | SMTP port — 587 for STARTTLS, 465 for implicit SSL |
+| `SMTP_USERNAME` | `""` | SMTP auth username (usually your full email address) |
+| `SMTP_PASSWORD` | `""` | SMTP auth password / app password / API key |
+| `SMTP_USE_TLS` | `true` | Use STARTTLS (port 587) — set only one of TLS/SSL to true |
+| `SMTP_USE_SSL` | `false` | Use implicit SSL (port 465) |
+| `SMTP_FROM_EMAIL` | `""` | "From" address shown to recipients (defaults to `SMTP_USERNAME` if empty) |
+| `SMTP_FROM_NAME` | `TRINETRA` | "From" display name on outgoing emails |
+| `OTP_LENGTH` | `6` | Number of digits in the OTP code |
+| `OTP_EXPIRY_MINUTES` | `10` | How long an OTP code stays valid |
+| `OTP_MAX_ATTEMPTS` | `5` | Wrong-code attempts before the OTP is invalidated |
+| `OTP_RESEND_COOLDOWN_SECONDS` | `60` | Minimum wait between resend requests |
+| `OTP_MAX_REQUESTS_PER_HOUR` | `5` | Max OTP sends per email address per hour (anti-spam) |
+| `BLOCK_DISPOSABLE_EMAILS` | `true` | Reject known throwaway-email domains (mailinator, guerrillamail, etc.) |
+| `VERIFY_EMAIL_MX` | `true` | Reject domains with no valid mail server (DNS MX lookup) |
 | `CASHFREE_APP_ID` | `""` | Cashfree app ID (empty = payments disabled, free mode) |
 | `CASHFREE_SECRET_KEY` | `""` | Cashfree secret key (empty = payments disabled, free mode) |
 | `CASHFREE_ENV` | `sandbox` | `sandbox` for testing, `production` for live payments |
 | `CASHFREE_WEBHOOK_URL` | `http://localhost:8000/api/payment/webhook` | Public webhook URL Cashfree posts payment events to |
 | `REDIS_URL` | `""` | Redis URL for TaskIQ broker (empty = inline execution) |
-| `TRUST_PROXY_HEADERS` | `false` | Set true behind a known reverse proxy |
+| `TRUST_PROXY_HEADERS` | `true` in `.env.example` (code default is `false`) | Set true only when behind a known reverse proxy (Docker mode ships this on since Nginx fronts the backend) |
 | `CACHE_TTL_DEFAULT` | `3600` | Default cache TTL in seconds |
 | `CACHE_TTL_LONG` | `86400` | Long cache TTL in seconds (24 hours) |
 
@@ -1154,7 +1306,7 @@ class MyNewPlugin(OSINTPlugin):
 
 ```bash
 # Clone the repo
-git clone https://github.com/K921-cyber/INDRA.git
+git clone https://github.com/your-username/INDRA.git
 cd INDRA
 
 # Docker (recommended for development)
@@ -1194,8 +1346,8 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
   </p>
   <br/>
   <p>
-    <a href="https://github.com/K921-cyber/INDRA/issues">Report Bug</a> ·
-    <a href="https://github.com/K921-cyber/INDRA/issues">Request Feature</a> ·
-    <a href="https://github.com/K921-cyber/INDRA">GitHub</a>
+    <a href="https://github.com/your-username/INDRA/issues">Report Bug</a> ·
+    <a href="https://github.com/your-username/INDRA/issues">Request Feature</a> ·
+    <a href="https://github.com/your-username/INDRA">GitHub</a>
   </p>
 </div>

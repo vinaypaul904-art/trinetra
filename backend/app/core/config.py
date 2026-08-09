@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # Frontend base URL — used to build links inside emails (password reset, etc.)
+    frontend_url: str = "http://localhost:3000"
+
     # Rate limiting
     trust_proxy_headers: bool = False  # Set true behind a known reverse proxy
 

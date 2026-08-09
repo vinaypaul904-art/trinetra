@@ -951,3 +951,40 @@ def create_user_from_hash(username: str, email: str, password_hash: str) -> tupl
         return False, "Registration failed. Please try again."
     finally:
         conn.close()
+
+def get_user_id_by_email(email: str) -> tuple[int, str] | None:
+    """Look up (user_id, username) by email. Used by the forgot-password flow."""
+    conn = _get_db()
+    if not conn:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT id, username FROM users WHERE email = ?", (email,)
+        ).fetchone()
+        if not row:
+            return None
+        return row["id"], row["username"]
+    except Exception as e:
+        logger.error("Failed to look up user by email: %s", e)
+        return None
+    finally:
+        conn.close()
+
+def set_user_password_hash(user_id: int, new_hash: str) -> bool:
+    """Directly set a user's password hash by user_id (used by the
+    forgot-password reset flow, where there's no 'current password' to
+    verify — the emailed token is the proof of identity instead).
+    """
+    conn = _get_db()
+    if not conn:
+        return False
+    try:
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+        conn.commit()
+        _add_password_to_history(user_id, new_hash)
+        return True
+    except Exception as e:
+        logger.error("Failed to set password hash for user_id %s: %s", user_id, e)
+        return False
+    finally:
+        conn.close()

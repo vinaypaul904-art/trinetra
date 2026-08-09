@@ -1,0 +1,27 @@
+{% extends "_base.html" %}
+{% block title %}Welcome to {{ app_name }}{% endblock %}
+{% block preheader %}Your account is verified — welcome to {{ app_name }}.{% endblock %}
+
+{% block content %}
+<h1 style="margin:0 0 6px;font-size:19px;color:#f0f2f5;">Welcome, {{ username }} &#128075;</h1>
+<p style="margin:0 0 18px;font-size:13px;color:#94a3b8;line-height:1.6;">
+  Your email is verified and your {{ app_name }} account is ready. You now have access to the full OSINT &amp; SOC analyst dashboard.
+</p>
+
+<div style="background:#101728;border:1px solid rgba(50,65,90,0.4);border-radius:10px;padding:16px 18px;margin-bottom:22px;">
+  <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">&#10003; Run OSINT scans across 15+ intelligence plugins</p>
+  <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">&#10003; Track live threats on the India attack map</p>
+  <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">&#10003; Set up watchlists and generate investigation reports</p>
+  <p style="margin:0;font-size:12px;color:#94a3b8;">&#10003; Ask the AI assistant for help anytime</p>
+</div>
+
+<table role="presentation" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="border-radius:8px;background:#3b82f6;">
+      <a href="{{ dashboard_url }}" style="display:inline-block;padding:12px 28px;font-size:13px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+        Open Dashboard
+      </a>
+    </td>
+  </tr>
+</table>
+{% endblock %}

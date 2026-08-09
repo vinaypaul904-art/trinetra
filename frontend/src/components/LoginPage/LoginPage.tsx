@@ -2,13 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../store/AuthContext';
 import { ShieldIcon, EyeIcon, EyeOffIcon, UserIcon, MailIcon, AlertTriangleIcon, CheckCircleIcon, RefreshCwIcon, LogInIcon, UserPlusIcon, ArrowLeftIcon } from 'lucide-react';
 
-type AuthMode = 'login' | 'register';
+type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 type RegisterStep = 'form' | 'otp';
 
 const RESEND_COOLDOWN_SECONDS = 60; // mirrors backend OTP_RESEND_COOLDOWN_SECONDS default
 
 export default function LoginPage() {
-  const { login, register, verifyOtp, resendOtp, error, authEnabled } = useAuth();
+  const { login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, error, authEnabled } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [step, setStep] = useState<RegisterStep>('form');
   const [username, setUsername] = useState('');
@@ -25,6 +25,21 @@ export default function LoginPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const usernameRef = useRef<HTMLInputElement>(null);
   const otpRef = useRef<HTMLInputElement>(null);
+  const [resetToken, setResetToken] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+
+  // If the user arrived via the emailed reset link, jump straight to the reset form
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const t = params.get('reset_token');
+  if (t) {
+    setResetToken(t);
+    setMode('reset');
+  }
+}, []);
 
   // Focus username input on mount
   useEffect(() => {
@@ -144,6 +159,46 @@ export default function LoginPage() {
     setResendMessage(null);
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!forgotEmail.trim() || submitting) return;
+  setSubmitting(true);
+  setLocalError(null);
+  setForgotMessage(null);
+  const result = await forgotPassword(forgotEmail.trim());
+  setForgotMessage(result.message || 'If an account with that email exists, a reset link has been sent.');
+  setSubmitting(false);
+};
+
+const handleResetPassword = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (submitting) return;
+  setLocalError(null);
+  if (newPassword.length < 6) {
+    setLocalError('Password must be at least 6 characters.');
+    return;
+  }
+  if (newPassword !== confirmNewPassword) {
+    setLocalError('Passwords do not match.');
+    return;
+  }
+  setSubmitting(true);
+  const result = await resetPassword(resetToken, newPassword);
+  if (result.success) {
+    setSuccess(true);
+    setTimeout(() => {
+      window.history.replaceState({}, '', window.location.pathname); // strip ?reset_token from the URL
+      setMode('login');
+      setSuccess(false);
+      setNewPassword('');
+      setConfirmNewPassword('');
+    }, 1800);
+  } else {
+    setLocalError(result.error || 'Could not reset password.');
+  }
+  setSubmitting(false);
+};
+
   return (
     <div className="login-page">
       <div className="login-bg-gradient" />
@@ -179,8 +234,8 @@ export default function LoginPage() {
           <div className="login-divider" />
 
           {/* Tab Switcher — hidden mid-verification so it can't be used to escape the OTP step */}
-          {step === 'form' && (
-            <div className="login-tabs">
+          {step === 'form' && (mode === 'login' || mode === 'register') && (
+          <div className="login-tabs">
               <button
                 className={`login-tab ${mode === 'login' ? 'active' : ''}`}
                 onClick={() => setMode('login')}
@@ -264,7 +319,17 @@ export default function LoginPage() {
                 >
                   {showPassword ? <EyeOffIcon size={15} /> : <EyeIcon size={15} />}
                 </button>
-              </div>
+            </div>
+
+              <div className="login-forgot-row">
+  <button
+    type="button"
+    className="login-link-btn"
+    onClick={() => { setMode('forgot'); setLocalError(null); setForgotMessage(null); }}
+  >
+    Forgot password?
+  </button>
+</div>
 
               {displayError && (
                 <div className="login-error">
@@ -494,6 +559,132 @@ export default function LoginPage() {
             </form>
           )}
 
+          {/* ── Forgot password form ── */}
+{mode === 'forgot' && (
+  <form onSubmit={handleForgotPassword} className="login-form">
+    <p className="login-subtitle" style={{ marginTop: 0 }}>
+      Enter your account email and we'll send you a password reset link.
+    </p>
+    <div className="login-input-wrapper">
+      <div className="login-input-icon">
+        <MailIcon size={16} />
+      </div>
+      <input
+        type="email"
+        value={forgotEmail}
+        onChange={e => setForgotEmail(e.target.value)}
+        placeholder="Email address"
+        className="login-input"
+        disabled={submitting}
+        autoComplete="email"
+      />
+    </div>
+
+    {localError && (
+      <div className="login-error">
+        <AlertTriangleIcon size={13} />
+        <span>{localError}</span>
+      </div>
+    )}
+    {forgotMessage && (
+      <div className="login-success">
+        <CheckCircleIcon size={14} />
+        <span>{forgotMessage}</span>
+      </div>
+    )}
+
+    <button type="submit" className="login-submit-btn" disabled={submitting}>
+      {submitting ? (
+        <>
+          <RefreshCwIcon size={14} className="login-spinner" />
+          Sending...
+        </>
+      ) : (
+        'Send Reset Link'
+      )}
+    </button>
+
+    <button
+  type="button"
+  className="login-link-btn"
+  onClick={() => { setMode('login'); setLocalError(null); setForgotMessage(null); }}
+  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '10px', alignSelf: 'flex-start' }}
+>
+  <ArrowLeftIcon size={13} /> Back to Sign In
+</button>
+  </form>
+)}
+
+{/* ── Reset password form (arrived via emailed link) ── */}
+{mode === 'reset' && (
+  <form onSubmit={handleResetPassword} className="login-form">
+    <p className="login-subtitle" style={{ marginTop: 0 }}>
+      Choose a new password for your account.
+    </p>
+    <div className="login-input-wrapper">
+      <div className="login-input-icon">
+        <ShieldIcon size={15} />
+      </div>
+      <input
+        type={showPassword ? 'text' : 'password'}
+        value={newPassword}
+        onChange={e => setNewPassword(e.target.value)}
+        placeholder="New password"
+        className="login-input"
+        disabled={submitting || success}
+        autoComplete="new-password"
+      />
+      <button
+        type="button"
+        className="login-toggle-vis"
+        onClick={() => setShowPassword(!showPassword)}
+        tabIndex={-1}
+      >
+        {showPassword ? <EyeOffIcon size={15} /> : <EyeIcon size={15} />}
+      </button>
+    </div>
+
+    <div className="login-input-wrapper">
+      <div className="login-input-icon">
+        <ShieldIcon size={15} />
+      </div>
+      <input
+        type={showPassword ? 'text' : 'password'}
+        value={confirmNewPassword}
+        onChange={e => setConfirmNewPassword(e.target.value)}
+        placeholder="Confirm new password"
+        className="login-input"
+        disabled={submitting || success}
+        autoComplete="new-password"
+      />
+    </div>
+
+    {localError && (
+      <div className="login-error">
+        <AlertTriangleIcon size={13} />
+        <span>{localError}</span>
+      </div>
+    )}
+    {success && (
+      <div className="login-success">
+        <CheckCircleIcon size={14} />
+        <span>Password reset! Redirecting to sign in...</span>
+      </div>
+    )}
+
+    <button type="submit" className="login-submit-btn" disabled={submitting || success}>
+      {submitting ? (
+        <>
+          <RefreshCwIcon size={14} className="login-spinner" />
+          Resetting...
+        </>
+      ) : (
+        'Reset Password'
+      )}
+    </button>
+  </form>
+)}
+          
           {/* Switch mode link — hidden during OTP verification (use Back instead) */}
           {step === 'form' && (
             <div className="login-switch-mode">

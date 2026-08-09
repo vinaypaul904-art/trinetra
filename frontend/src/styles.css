@@ -5199,6 +5199,12 @@ body {
   text-decoration: none;
 }
 
+.login-forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+
 .login-form {
   display: flex;
   flex-direction: column;

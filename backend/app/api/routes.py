@@ -12,12 +12,18 @@ from app.core.api_key_auth import (
     create_user, validate_password_strength, change_password, get_username_for_token,
     hash_password_for_storage, check_password_reuse_any_user, create_user_from_hash,
     create_session_for_user, get_user_credits, deduct_credits, add_credits,
+    get_user_id_by_email, set_user_password_hash,   
+)
+from app.core.password_reset import (
+    create_reset_token,
+    verify_reset_token,
+    consume_reset_token,
 )
 from app.core.email_otp import (
     validate_email_for_signup, is_email_or_username_taken, create_or_refresh_otp,
     verify_and_consume_otp, get_pending_signup_identity, cleanup_expired_pending_signups,
 )
-from app.core.email_service import send_otp_email
+from app.services.email_service import send_otp_email, send_welcome_email, send_forgot_password_email
 from app.core.config import settings
 import re
 
@@ -140,6 +146,12 @@ async def auth_register_verify_otp(body: dict):
     role = result  # "admin" or "user"
     token = create_session_for_user(username)
 
+    # Fire-and-forget welcome email — never block/fail signup if this errors
+    try:
+        await send_welcome_email(email, username)
+    except Exception:
+        logger.warning("Welcome email failed to send for %s", email, exc_info=True)
+
     return {
         "success": True,
         "token": token,
@@ -219,6 +231,77 @@ async def auth_login(body: dict):
         "auth_enabled": True,
     }
 
+@router.post("/auth/forgot-password")
+async def auth_forgot_password(body: dict):
+    """Request a password-reset email.
+
+    Accepts: {"email": "..."}
+    Always returns a generic success message regardless of whether the
+    email exists — this prevents attackers from using this endpoint to
+    discover which emails are registered.
+    """
+    email = body.get("email", "").strip().lower()
+    generic_response = {
+        "success": True,
+        "message": "If an account with that email exists, a password reset link has been sent.",
+    }
+    if not email:
+        return generic_response
+
+    # Look up the user by email (get_user() looks up by username, so
+    # find the user_id by email directly here)
+    conn_user_id = get_user_id_by_email(email)
+    if not conn_user_id:
+        return generic_response  # don't reveal whether the email exists
+
+    user_id, username = conn_user_id
+    created, message, token = create_reset_token(user_id, email)
+    if not created or not token:
+        # Still return generic success — don't leak cooldown/rate-limit info either
+        return generic_response
+
+    reset_url = f"{settings.frontend_url.rstrip('/')}/?reset_token={token}"
+    try:
+        await send_forgot_password_email(email, username, reset_url)
+    except Exception:
+        logger.warning("Forgot-password email failed to send for %s", email, exc_info=True)
+
+    return generic_response
+
+
+@router.post("/auth/reset-password")
+async def auth_reset_password(body: dict):
+    """Complete a password reset using the token from the emailed link.
+
+    Accepts: {"token": "...", "new_password": "..."}
+    """
+    token = body.get("token", "").strip()
+    new_password = body.get("new_password", "")
+
+    if not token or not new_password:
+        return {"success": False, "error": "Reset token and new password are required."}
+
+    valid, message, info = verify_reset_token(token)
+    if not valid:
+        return {"success": False, "error": message}
+
+    password_valid, password_error = validate_password_strength(new_password)
+    if not password_valid:
+        return {"success": False, "error": password_error}
+
+    if check_password_reuse_any_user(new_password):
+        return {"success": False, "error": "This password was recently used. Please choose a different password."}
+
+    consumed, consume_message, consumed_info = consume_reset_token(token)
+    if not consumed:
+        return {"success": False, "error": consume_message}
+
+    new_hash = hash_password_for_storage(new_password)
+    updated = set_user_password_hash(consumed_info["user_id"], new_hash)
+    if not updated:
+        return {"success": False, "error": "Could not update password. Please try again."}
+
+    return {"success": True, "message": "Password reset successfully. You can now log in with your new password."}
 
 @router.post("/auth/verify")
 async def auth_verify(body: dict):

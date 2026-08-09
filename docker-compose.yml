@@ -79,6 +79,8 @@ services:
       - APP_NAME=TRINETRA OSINT API
       - VERSION=1.0.0
       - DEBUG=false
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - TRUST_PROXY_HEADERS=true
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-trinetra}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-trinetra}
       - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost"]}

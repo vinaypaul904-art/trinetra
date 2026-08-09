@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>{% block title %}TRINETRA{% endblock %}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#050810;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+  <!-- Preheader: shows in inbox preview, hidden in the email body -->
+  <div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#050810;">
+    {% block preheader %}{% endblock %}
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#050810;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#0b0f1a;border:1px solid rgba(50,65,90,0.45);border-radius:14px;overflow:hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:26px 32px 18px;border-bottom:1px solid rgba(50,65,90,0.35);">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="font-size:20px;line-height:1;vertical-align:middle;">&#128737;&#65039;</td>
+                  <td style="padding-left:10px;vertical-align:middle;">
+                    <div style="font-size:15px;font-weight:700;color:#f0f2f5;letter-spacing:0.5px;">HACKHALT</div>
+                    <div style="font-size:10px;color:#5a6a80;letter-spacing:1.5px;text-transform:uppercase;">Cyber Intelligence Council</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding:30px 32px;">
+              <div style="font-size:12px;letter-spacing:2px;color:#3b82f6;font-weight:700;margin-bottom:10px;">{{ app_name }}</div>
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:18px 32px 26px;border-top:1px solid rgba(50,65,90,0.35);">
+              <p style="margin:0 0 6px;font-size:11px;color:#5a6a80;line-height:1.6;">
+                This is an automated message from {{ app_name }}, an OSINT &amp; threat-intelligence platform operated by HackHalt Cyber Intelligence Council. Please do not reply directly to this email.
+              </p>
+              <p style="margin:0;font-size:10px;color:#3d4759;">
+                &copy; {{ current_year }} HackHalt Cyber Intelligence Council. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -31,6 +31,8 @@ interface AuthContextType extends AuthState {
   /** Resend the signup verification code to the given email. */
   resendOtp: (email: string) => Promise<{ success: boolean; error?: string; message?: string }>;
   /** Clear session token and log out */
+  forgotPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   logout: () => void;
   /** Re-check auth status with the backend */
   checkAuth: () => Promise<void>;
@@ -259,6 +261,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const forgotPassword = useCallback(async (email: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+  try {
+    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    return { success: !!data.success, message: data.message };
+  } catch {
+    return { success: false, error: 'Network error. Could not connect to server.' };
+  }
+}, []);
+
+const resetPassword = useCallback(async (token: string, newPassword: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+  try {
+    const res = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    const data = await res.json();
+    if (data.success) return { success: true, message: data.message };
+    return { success: false, error: data.error || 'Could not reset password.' };
+  } catch {
+    return { success: false, error: 'Network error. Could not connect to server.' };
+  }
+}, []);
+  
   const login = useCallback(async (username: string, password: string): Promise<boolean> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
@@ -352,7 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.isAuthenticated, state.username, refreshCredits]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, verifyOtp, resendOtp, logout, checkAuth, refreshCredits, registrationOpen: state.registrationOpen }}>
+    <AuthContext.Provider value={{ ...state, login, register, verifyOtp, resendOtp, forgotPassword, resetPassword, logout, checkAuth, refreshCredits, registrationOpen: state.registrationOpen }}>
       {children}
     </AuthContext.Provider>
   );

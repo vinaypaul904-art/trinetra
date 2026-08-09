@@ -187,6 +187,11 @@ def markdown_to_docx(doc, markdown_text):
             continue
 
         # Headers
+        if stripped.startswith("#### "):
+            h = doc.add_heading(level=4)
+            _add_inline(h, stripped[5:])
+            i += 1
+            continue
         if stripped.startswith("### "):
             h = doc.add_heading(level=3)
             _add_inline(h, stripped[4:])
